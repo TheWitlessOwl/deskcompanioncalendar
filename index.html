@@ -44,13 +44,10 @@
   <input id="email" type="email" autocomplete="username" autocapitalize="off">
   <label for="pass">Password</label>
   <input id="pass" type="password" autocomplete="current-password">
-  <details id="proj">
-    <summary style="margin-top:14px;color:var(--muted);cursor:pointer">Firebase project (first time only)</summary>
-    <label for="apikey">Web API key</label>
+  <div id="proj">
+    <label for="apikey">Firebase Web API key (first time only)</label>
     <input id="apikey" autocapitalize="off" autocorrect="off">
-    <label for="dburl">Database URL</label>
-    <input id="dburl" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="https://your-project-default-rtdb.region.firebasedatabase.app">
-  </details>
+  </div>
   <button class="add" id="signin">Sign in</button>
   <div id="loginmsg" class="err" style="min-height:1.4em;margin-top:10px;font-size:.9rem"></div>
 </section>
@@ -82,22 +79,24 @@
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
+  // Project settings for your Firebase project (not secrets: your data is protected by sign-in and the database rules).
+  var DB_URL = "https://witlessdeskcompanion-default-rtdb.asia-southeast1.firebasedatabase.app";
+  var API_KEY = "AIzaSyCo6qkLytx2HfkJ2yLnn6PR5SqayQ66Q7E";
+
   var cfg = null, events = [], idToken = "", tokenExp = 0;
 
   function store(op, k, v) {
     try { return op === "get" ? localStorage.getItem(k) : op === "del" ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { return null; }
   }
   function loadCfg() {
-    // Optional link: index.html#apikey=<key>&db=<url> pre-fills the project details, then clears the address bar
+    // Optional: index.html#apikey=<key> saves the API key, then clears the address bar
     if (location.hash.length > 1) {
       var p = new URLSearchParams(location.hash.slice(1));
       if (p.get("apikey")) store("set", "dc_apikey", p.get("apikey"));
-      if (p.get("db")) store("set", "dc_db", p.get("db"));
       history.replaceState(null, "", location.pathname);
     }
-    var c = { apikey: store("get", "dc_apikey"), db: store("get", "dc_db"), refresh: store("get", "dc_refresh"), uid: store("get", "dc_uid") };
-    if (c.db) c.db = c.db.replace(/\/+$/, "");
-    return c;
+    return { apikey: API_KEY || store("get", "dc_apikey"), db: DB_URL.replace(/\/+$/, ""),
+             refresh: store("get", "dc_refresh"), uid: store("get", "dc_uid") };
   }
   function signedIn() { return cfg && cfg.refresh && cfg.uid && cfg.apikey && cfg.db; }
   function base() { return cfg.db + "/users/" + encodeURIComponent(cfg.uid) + "/events"; }
@@ -130,8 +129,8 @@
     $("main").hidden = !ok;
     if (ok) { $("date").value = $("date").value || todayStr(); refresh(); }
     else {
-      $("apikey").value = cfg.apikey || ""; $("dburl").value = cfg.db || "";
-      $("proj").open = !(cfg.apikey && cfg.db);
+      $("apikey").value = cfg.apikey || "";
+      $("proj").hidden = !!cfg.apikey;   // only ask for the API key if we don't have it yet
     }
   }
 
@@ -207,15 +206,15 @@
   });
 
   $("signin").addEventListener("click", function () {
-    var email = $("email").value.trim(), pass = $("pass").value, apikey = $("apikey").value.trim(), dburl = $("dburl").value.trim();
+    var email = $("email").value.trim(), pass = $("pass").value, apikey = $("apikey").value.trim();
     var m = $("loginmsg");
-    if (!email || !pass || !apikey || !/^https:\/\//.test(dburl)) { m.textContent = "Fill in your email, password, API key and database URL."; $("proj").open = true; return; }
+    if (!email || !pass || !apikey) { m.textContent = "Fill in your email, password and Firebase Web API key."; $("proj").hidden = false; return; }
     m.textContent = "";
     fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + encodeURIComponent(apikey), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email, password: pass, returnSecureToken: true })
     }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (d) {
-      store("set", "dc_apikey", apikey); store("set", "dc_db", dburl);
+      store("set", "dc_apikey", apikey);
       store("set", "dc_refresh", d.refreshToken); store("set", "dc_uid", d.localId);
       idToken = d.idToken; tokenExp = Date.now() + (+d.expiresIn) * 1000;
       $("pass").value = ""; show();
